@@ -1,6 +1,5 @@
 provider "azurerm" {
   features {}
-
 }
 
 
@@ -22,20 +21,17 @@ resource "azurerm_linux_web_app" "main" {
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
   service_plan_id     = azurerm_service_plan.main.id
-
+  
   site_config {
     application_stack {
+      # The correct attribute is "docker_image_name" not "docker_image"
       docker_image_name = "${var.dockerhub_username}/${var.docker_image}"
+      docker_registry_url = "https://index.docker.io"
     }
-
     always_on = false
   }
-
-
+  
   app_settings = {
     WEBSITES_ENABLE_APP_SERVICE_STORAGE = "false"
-    DOCKER_REGISTRY_SERVER_URL          = "https://index.docker.io"
-    DOCKER_REGISTRY_SERVER_USERNAME     = var.dockerhub_username
-    DOCKER_REGISTRY_SERVER_PASSWORD     = var.dockerhub_password
   }
 }
