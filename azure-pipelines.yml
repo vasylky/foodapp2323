@@ -17,7 +17,8 @@ variables:
   dockerHubUsername: 'qqvky'
   webAppName: 'pruvit123'
   terraformVersion: '1.5.7'
-  terraformWorkingDirectory: 'foodapp232/ASPNETCore-WebAPI-Sample/SampleWebApiAspNetCore/terraform'
+  terraformWorkingDirectory: '$(System.DefaultWorkingDirectory)/SampleWebApiAspNetCore/terraform'
+
 
 stages:
 - stage: Build
