@@ -2,7 +2,6 @@ trigger:
   branches:
     include:
       - main
-  
 pr:
   branches:
     include:
@@ -15,8 +14,10 @@ variables:
   buildConfiguration: 'Release'
   projectPath: 'SampleWebApiAspNetCore/SampleWebApiAspNetCore.csproj'
   dockerImageName: 'samplewebapiaspnetcore-webapi'
-  dockerHubUsername: 'qqvky'  
-  webAppName: 'pruvit123'  
+  dockerHubUsername: 'qqvky'
+  webAppName: 'pruvit123'
+  terraformVersion: '1.5.7'
+  terraformWorkingDirectory: '$(System.DefaultWorkingDirectory)/terraform'
 
 stages:
 - stage: Build
@@ -28,20 +29,17 @@ stages:
       inputs:
         packageType: 'sdk'
         version: '7.0.x'
-    
     - task: DotNetCoreCLI@2
       displayName: 'Restore'
       inputs:
         command: 'restore'
         projects: '$(projectPath)'
-    
     - task: DotNetCoreCLI@2
       displayName: 'Build'
       inputs:
         command: 'build'
         projects: '$(projectPath)'
         arguments: '--configuration $(buildConfiguration) --no-restore'
-    
     - task: DotNetCoreCLI@2
       displayName: 'Test'
       inputs:
@@ -49,7 +47,6 @@ stages:
         projects: '**/*Tests.csproj'
         arguments: '--configuration $(buildConfiguration) --no-build'
       continueOnError: true
-    
     - task: Docker@2
       displayName: 'Build Docker Image'
       inputs:
@@ -61,7 +58,6 @@ stages:
           $(Build.BuildId)
           latest
         buildContext: '$(Build.SourcesDirectory)'
-    
     - task: Docker@2
       displayName: 'Push Docker Image to DockerHub'
       inputs:
@@ -72,9 +68,118 @@ stages:
           $(Build.BuildId)
           latest
 
+- stage: TerraformPlan
+  displayName: 'Terraform Plan'
+  dependsOn: Build
+  jobs:
+  - job: TerraformPlan
+    steps:
+    - task: TerraformInstaller@0
+      displayName: 'Install Terraform'
+      inputs:
+        terraformVersion: '$(terraformVersion)'
+
+    - task: DownloadSecureFile@1
+      name: tfVarsFile
+      displayName: 'Download terraform.tfvars'
+      inputs:
+        secureFile: 'terraform.tfvars'
+
+    - script: |
+        mkdir -p $(terraformWorkingDirectory)
+        cp $(tfVarsFile.secureFilePath) $(terraformWorkingDirectory)/terraform.tfvars
+      displayName: 'Copy terraform.tfvars to working directory'
+
+    - task: TerraformTaskV4@4
+      displayName: 'Terraform Init'
+      inputs:
+        provider: 'azurerm'
+        command: 'init'
+        workingDirectory: '$(terraformWorkingDirectory)'
+        backendServiceArm: 'food-conn'
+        backendAzureRmResourceGroupName: 'terraform-state-rg'
+        backendAzureRmStorageAccountName: 'tfstatepruvit123'
+        backendAzureRmContainerName: 'tfstate'
+        backendAzureRmKey: 'webapp.terraform.tfstate'
+
+    - task: TerraformTaskV4@4
+      displayName: 'Terraform Plan'
+      inputs:
+        provider: 'azurerm'
+        command: 'plan'
+        workingDirectory: '$(terraformWorkingDirectory)'
+        environmentServiceNameAzureRM: 'food-conn'
+        commandOptions: '-out=tfplan'
+
+    - task: CopyFiles@2
+      displayName: 'Copy Terraform Plan'
+      inputs:
+        sourceFolder: '$(terraformWorkingDirectory)'
+        contents: 'tfplan'
+        targetFolder: '$(Build.ArtifactStagingDirectory)'
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Terraform Plan'
+      inputs:
+        pathToPublish: '$(Build.ArtifactStagingDirectory)'
+        artifactName: 'terraform-plan'
+
+- stage: TerraformApply
+  displayName: 'Terraform Apply'
+  dependsOn: TerraformPlan
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  jobs:
+  - job: ApplyInfrastructure
+    steps:
+    - task: TerraformInstaller@0
+      displayName: 'Install Terraform'
+      inputs:
+        terraformVersion: '$(terraformVersion)'
+
+    - task: DownloadSecureFile@1
+      name: tfVarsFile
+      displayName: 'Download terraform.tfvars'
+      inputs:
+        secureFile: 'terraform.tfvars'
+
+    - task: DownloadBuildArtifacts@1
+      displayName: 'Download Terraform Plan'
+      inputs:
+        buildType: 'current'
+        downloadType: 'single'
+        artifactName: 'terraform-plan'
+        downloadPath: '$(System.ArtifactsDirectory)'
+
+    - script: |
+        mkdir -p $(terraformWorkingDirectory)
+        cp $(tfVarsFile.secureFilePath) $(terraformWorkingDirectory)/terraform.tfvars
+        cp $(System.ArtifactsDirectory)/terraform-plan/tfplan $(terraformWorkingDirectory)/
+      displayName: 'Copy terraform.tfvars and plan file'
+
+    - task: TerraformTaskV4@4
+      displayName: 'Terraform Init'
+      inputs:
+        provider: 'azurerm'
+        command: 'init'
+        workingDirectory: '$(terraformWorkingDirectory)'
+        backendServiceArm: 'food-conn'
+        backendAzureRmResourceGroupName: 'terraform-state-rg'
+        backendAzureRmStorageAccountName: 'tfstatepruvit123'
+        backendAzureRmContainerName: 'tfstate'
+        backendAzureRmKey: 'webapp.terraform.tfstate'
+
+    - task: TerraformTaskV4@4
+      displayName: 'Terraform Apply'
+      inputs:
+        provider: 'azurerm'
+        command: 'apply'
+        workingDirectory: '$(terraformWorkingDirectory)'
+        environmentServiceNameAzureRM: 'food-conn'
+        commandOptions: 'tfplan'
+
 - stage: Deploy
   displayName: 'Deploy to Azure Web App'
-  dependsOn: Build
+  dependsOn: TerraformApply
   condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
   jobs:
   - job: DeployToWebApp
