@@ -24,7 +24,6 @@ resource "azurerm_linux_web_app" "main" {
   
   site_config {
     application_stack {
-      # The correct attribute is "docker_image_name" not "docker_image"
       docker_image_name = "${var.dockerhub_username}/${var.docker_image}"
       docker_registry_url = "https://index.docker.io"
     }
