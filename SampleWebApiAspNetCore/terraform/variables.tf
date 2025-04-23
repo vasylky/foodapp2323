@@ -11,7 +11,7 @@ variable "app_name" {
 }
 
 variable "dockerhub_username" {
-  default = "qqvky"
+  description = "name"
 }
 
 variable "dockerhub_password" {
@@ -20,4 +20,8 @@ variable "dockerhub_password" {
 }
 variable "docker_image" {
   default = "samplewebapiaspnetcore-webapi:latest"
+}
+
+variable "dockerhub_server_url" {
+  description = "value"
 }
