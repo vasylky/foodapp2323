@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bestrong-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: bestrong-api
+  template:
+    metadata:
+      labels:
+        app: bestrong-api
+    spec:
+      containers:
+      - name: bestrong-api
+        image: qqvky/samplewebapiaspnetcore-webapi:latest
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+        
